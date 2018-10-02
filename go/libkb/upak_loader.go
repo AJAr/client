@@ -20,14 +20,16 @@ type UPAKLoader interface {
 	Load(arg LoadUserArg) (ret *keybase1.UserPlusAllKeys, user *User, err error)
 	LoadV2(arg LoadUserArg) (ret *keybase1.UserPlusKeysV2AllIncarnations, user *User, err error)
 	LoadLite(arg LoadUserArg) (ret *keybase1.UpkLiteV1AllIncarnations, err error)
+	LoadV2OrLite(arg LoadUserArg) (ret *keybase1.UPKLiteAllIncarnationsInterface, user *User, err error)
 	CheckKIDForUID(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (found bool, revokedAt *keybase1.KeybaseTime, deleted bool, err error)
 	LoadUserPlusKeys(ctx context.Context, uid keybase1.UID, pollForKID keybase1.KID) (keybase1.UserPlusKeys, error)
-	LoadKeyV2(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (*keybase1.UserPlusKeysV2, *keybase1.UserPlusKeysV2AllIncarnations, *keybase1.PublicKeyV2NaCl, error)
+	LoadKey(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (*keybase1.UPKLiteInterface, *keybase1.UPKLiteAllIncarnationsInterface, *keybase1.PublicKeyV2NaCl, error)
 	Invalidate(ctx context.Context, uid keybase1.UID)
 	LoadDeviceKey(ctx context.Context, uid keybase1.UID, deviceID keybase1.DeviceID) (upak *keybase1.UserPlusAllKeys, deviceKey *keybase1.PublicKey, revoked *keybase1.RevokedKey, err error)
 	LoadUPAKWithDeviceID(ctx context.Context, uid keybase1.UID, deviceID keybase1.DeviceID) (*keybase1.UserPlusKeysV2AllIncarnations, error)
 	LookupUsername(ctx context.Context, uid keybase1.UID) (NormalizedUsername, error)
 	LookupUsernameUPAK(ctx context.Context, uid keybase1.UID) (NormalizedUsername, error)
+	LookupUsernameUPAKLite(ctx context.Context, uid keybase1.UID) (NormalizedUsername, error)
 	LookupUID(ctx context.Context, un NormalizedUsername) (keybase1.UID, error)
 	LookupUsernameAndDevice(ctx context.Context, uid keybase1.UID, did keybase1.DeviceID) (username NormalizedUsername, deviceName string, deviceType string, err error)
 	ListFollowedUIDs(ctx context.Context, uid keybase1.UID) ([]keybase1.UID, error)
@@ -252,6 +254,32 @@ func (u *CachedUPAKLoader) PutUserToCache(ctx context.Context, user *User) error
 	return err
 }
 
+func (u *CachedUPAKLoader) LoadV2OrLite(arg LoadUserArg) (*keybase1.UPKLiteAllIncarnationsInterface, *User, error) {
+	var upak keybase1.UPKLiteAllIncarnationsInterface
+	var user *User
+	if arg.upakLite {
+		upakLite, err := u.LoadLite(arg)
+		if err != nil {
+			return nil, nil, err
+		}
+		if upakLite == nil {
+			return nil, nil, nil
+		}
+		upak = *upakLite
+	} else {
+		upakV2, u, err := u.LoadV2(arg)
+		if err != nil {
+			return nil, nil, err
+		}
+		if upakV2 == nil {
+			return nil, nil, nil
+		}
+		upak = *upakV2
+		user = u
+	}
+	return &upak, user, nil
+}
+
 func (u *CachedUPAKLoader) LoadLite(arg LoadUserArg) (*keybase1.UpkLiteV1AllIncarnations, error) {
 	m, tbs := arg.m.WithTimeBuckets()
 	arg.m = m
@@ -471,6 +499,7 @@ func (u *CachedUPAKLoader) LoadV2(arg LoadUserArg) (*keybase1.UserPlusKeysV2AllI
 	m, tbs := arg.m.WithTimeBuckets()
 	arg.m = m
 	defer tbs.Record("CachedUPAKLoader.LoadV2")()
+
 	return u.loadWithInfo(arg, nil, nil, true)
 }
 
@@ -525,11 +554,13 @@ func (u *CachedUPAKLoader) LoadUserPlusKeys(ctx context.Context, uid keybase1.UI
 	return up, nil
 }
 
-// LoadKeyV2 looks through all incarnations for the user and returns the incarnation with the given
+// LoadKey looks through all incarnations for the user and returns the incarnation with the given
 // KID, as well as the Key data associated with that KID. It picks the latest such
 // incarnation if there are multiple.
-func (u *CachedUPAKLoader) LoadKeyV2(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (ret *keybase1.UserPlusKeysV2,
-	upak *keybase1.UserPlusKeysV2AllIncarnations, key *keybase1.PublicKeyV2NaCl, err error) {
+// It first tries to load a UPAKLite, but if this fails, fallsback to full UPAK loader
+func (u *CachedUPAKLoader) LoadKey(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (ret *keybase1.UPKLiteInterface,
+	upak *keybase1.UPKLiteAllIncarnationsInterface, key *keybase1.PublicKeyV2NaCl, err error) {
+
 	ctx = WithLogTag(ctx, "LK") // Load key
 	defer u.G().CVTraceTimed(ctx, VLog0, fmt.Sprintf("LoadKeyV2 uid:%s,kid:%s", uid, kid), func() error { return err })()
 	ctx, tbs := u.G().CTimeBuckets(ctx)
@@ -545,33 +576,59 @@ func (u *CachedUPAKLoader) LoadKeyV2(ctx context.Context, uid keybase1.UID, kid 
 	// people have cached values for previous pre-reset user incarnations that
 	// were incorrect. So clobber over that if it comes to it.
 	attempts := []LoadUserArg{
-		argBase,
-		argBase.WithForcePoll(true),
-		argBase.WithForceReload(),
+		argBase.ForUPAKLite(),
+		// argBase,
+		// argBase.WithForcePoll(true),
+		// argBase.WithForceReload(),
 	}
 
 	for i, arg := range attempts {
-
 		if i > 0 {
 			u.G().VDL.CLogf(ctx, VLog0, "| reloading with arg: %s", arg.String())
 		}
 
-		upak, _, err := u.LoadV2(arg)
+		upak, _, err := u.LoadV2OrLite(arg)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 		if upak == nil {
 			return nil, nil, nil, fmt.Errorf("Nil user, nil error from LoadUser")
 		}
-
-		ret, key := upak.FindKID(kid)
+		ret, key := FindKID(*upak, kid)
 		if key != nil {
-			u.G().VDL.CLogf(ctx, VLog1, "- found kid in UPAK: %v", ret.Uid)
+			u.G().VDL.CLogf(ctx, VLog1, "- found kid in UPAK: %v", (*ret).GetUID())
 			return ret, upak, key, nil
 		}
 	}
 
-	return nil, nil, nil, NotFoundError{Msg: "Not found: Key for user"}
+	return nil, nil, nil, NotFoundError{Msg: "Not found during LoadKey: Key for user"}
+}
+
+// FindKID finds the Key and user incarnation that most recently used this KID.
+// It is possible for users to use the same KID across incarnations (though definitely
+// not condoned or encouraged). In that case, we'll give the most recent use.
+func FindKID(u keybase1.UPKLiteAllIncarnationsInterface, kid keybase1.KID) (*keybase1.UPKLiteInterface, *keybase1.PublicKeyV2NaCl) {
+	ret, ok := u.GetCurrent().GetDeviceKeys()[kid]
+	if ok {
+		current := u.GetCurrent()
+		return &current, &ret
+	}
+
+	for i := len(u.GetPastIncarnations()) - 1; i >= 0; i-- {
+		prev := u.GetPastIncarnations()[i]
+		ret, ok = prev.GetDeviceKeys()[kid]
+		if ok {
+			return &prev, &ret
+		}
+	}
+	return nil, nil
+}
+
+// HasKID returns true if u has the given KID in any of its incarnations.
+// Useful for deciding if we should repoll a stale UPAK in the UPAK loader.
+func HasKID(u keybase1.UPKLiteAllIncarnationsInterface, kid keybase1.KID) bool {
+	incarnation, _ := FindKID(u, kid)
+	return (incarnation != nil)
 }
 
 func (u *CachedUPAKLoader) Invalidate(ctx context.Context, uid keybase1.UID) {
@@ -682,6 +739,16 @@ func (u *CachedUPAKLoader) LookupUsernameUPAK(ctx context.Context, uid keybase1.
 	return ret, err
 }
 
+// LookupUsername should use a map later on when caching is done, but for now it doesn't.
+func (u *CachedUPAKLoader) LookupUsernameUPAKLite(ctx context.Context, uid keybase1.UID) (NormalizedUsername, error) {
+	arg := NewLoadUserByUIDArg(ctx, u.G(), uid).WithStaleOK(true).WithPublicKeyOptional().ForUPAKLite()
+	upak, err := u.G().GetUPAKLoader().LoadLite(arg)
+	if err != nil {
+		return "", nil
+	}
+	return NewNormalizedUsername(upak.Current.Username), nil
+}
+
 // LookupUID is a verified map of username -> UID. IT calls into the resolver, which gives un untrusted
 // UID, but verifies with the UPAK loader that the mapping UID -> username is correct.
 func (u *CachedUPAKLoader) LookupUID(ctx context.Context, un NormalizedUsername) (keybase1.UID, error) {
@@ -784,7 +851,7 @@ func (u *CachedUPAKLoader) loadUserWithKIDAndInfo(ctx context.Context, uid keyba
 	for _, arg := range attempts {
 		u.G().VDL.CLogf(ctx, VLog0, "| loadWithUserKIDAndInfo: loading with arg: %s", arg.String())
 		ret, _, err = u.loadWithInfo(arg, info, nil, false)
-		if err == nil && ret != nil && (kid.IsNil() || ret.HasKID(kid)) {
+		if err == nil && ret != nil && (kid.IsNil() || HasKID(ret, kid)) {
 			u.G().VDL.CLogf(ctx, VLog0, "| loadWithUserKIDAndInfo: UID/KID %s/%s found", uid, kid)
 			return ret, nil
 		}
