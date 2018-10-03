@@ -8,31 +8,20 @@ import {type Props} from './with-tooltip'
 
 type State = {
   mouseIn: boolean,
-  visible: boolean,
 }
 
 class WithTooltip extends React.Component<Props, State> {
   state = {
     mouseIn: false,
-    visible: false,
   }
   _attachmentRef: ?React.Component<any> = null
   _onMouseEnter = () => {
     this.setState({mouseIn: true})
   }
   _onMouseLeave = () => {
-    this.setState({mouseIn: false, visible: false})
+    this.setState({mouseIn: false})
   }
   _setAttachmentRef = attachmentRef => (this._attachmentRef = attachmentRef)
-  componentDidUpdate(prevProps: Props, prevState: State) {
-    if (!prevState.mouseIn && this.state.mouseIn) {
-      // Set visible after Toast is mounted, to trigger transition on opacity.
-      // Note that we aren't doing anything to make ease out work. We don't
-      // keep Toast mounted all the time (which would make this unnecessary)
-      // because in that case it doesn't follow scrolling.
-      this.setState({visible: true})
-    }
-  }
   render() {
     return (
       <Box
@@ -42,18 +31,16 @@ class WithTooltip extends React.Component<Props, State> {
         onMouseLeave={this._onMouseLeave}
       >
         {this.props.children}
-        {this.state.mouseIn && (
-          <Toast
-            containerStyle={this.props.multiline ? styles.containerMultiline : styles.container}
-            visible={this.state.visible}
-            attachTo={() => this._attachmentRef}
-            position={this.props.position || 'top center'}
-          >
-            <Text type="BodySmall" style={styles.text}>
-              {this.props.text}
-            </Text>
-          </Toast>
-        )}
+        <Toast
+          containerStyle={this.props.multiline ? styles.containerMultiline : styles.container}
+          visible={this.state.mouseIn}
+          attachTo={() => this._attachmentRef}
+          position={this.props.position || 'top center'}
+        >
+          <Text type="BodySmall" style={styles.text}>
+            {this.props.text}
+          </Text>
+        </Toast>
       </Box>
     )
   }
