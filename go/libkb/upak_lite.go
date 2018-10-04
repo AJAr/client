@@ -40,7 +40,7 @@ type HighSigChainLoader struct {
 }
 
 type HighSigChain struct {
-	Contextified
+	MetaContextified
 	uid        keybase1.UID
 	username   NormalizedUsername
 	chainLinks ChainLinks
@@ -53,8 +53,9 @@ const UpkLiteMinorVersionCurrent = keybase1.UpkLiteMinorVersion_V0
 
 func NewHighSigChainLoader(m MetaContext, user *User, leaf *MerkleUserLeaf) *HighSigChainLoader {
 	hsc := HighSigChain{
-		uid:      user.GetUID(),
-		username: user.GetNormalizedName(),
+		MetaContextified: NewMetaContextified(m),
+		uid:              user.GetUID(),
+		username:         user.GetNormalizedName(),
 	}
 	loader := HighSigChainLoader{
 		user:             user,
