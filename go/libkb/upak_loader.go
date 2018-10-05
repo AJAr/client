@@ -23,7 +23,7 @@ type UPAKLoader interface {
 	LoadV2OrLite(arg LoadUserArg) (ret *keybase1.UPKLiteAllIncarnationsInterface, user *User, err error)
 	CheckKIDForUID(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (found bool, revokedAt *keybase1.KeybaseTime, deleted bool, err error)
 	LoadUserPlusKeys(ctx context.Context, uid keybase1.UID, pollForKID keybase1.KID) (keybase1.UserPlusKeys, error)
-	LoadKey(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (*keybase1.UPKLiteInterface, *keybase1.UPKLiteAllIncarnationsInterface, *keybase1.PublicKeyV2NaCl, error)
+	LoadKey(ctx context.Context, uid keybase1.UID, kid keybase1.KID, includeLowKeys bool) (*keybase1.UPKLiteInterface, *keybase1.UPKLiteAllIncarnationsInterface, *keybase1.PublicKeyV2NaCl, error)
 	Invalidate(ctx context.Context, uid keybase1.UID)
 	LoadDeviceKey(ctx context.Context, uid keybase1.UID, deviceID keybase1.DeviceID) (upak *keybase1.UserPlusAllKeys, deviceKey *keybase1.PublicKey, revoked *keybase1.RevokedKey, err error)
 	LoadUPAKWithDeviceID(ctx context.Context, uid keybase1.UID, deviceID keybase1.DeviceID) (*keybase1.UserPlusKeysV2AllIncarnations, error)
@@ -558,8 +558,9 @@ func (u *CachedUPAKLoader) LoadUserPlusKeys(ctx context.Context, uid keybase1.UI
 // KID, as well as the Key data associated with that KID. It picks the latest such
 // incarnation if there are multiple.
 // It first tries to load a UPAKLite, but if this fails, fallsback to full UPAK loader
-func (u *CachedUPAKLoader) LoadKey(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (ret *keybase1.UPKLiteInterface,
-	upak *keybase1.UPKLiteAllIncarnationsInterface, key *keybase1.PublicKeyV2NaCl, err error) {
+// A high key is a key that can sign a link (so, device and PGP sibkeys). If you might be looking for a subkey, e.g.,
+// specify includeLowKeys=true.
+func (u *CachedUPAKLoader) LoadKey(ctx context.Context, uid keybase1.UID, kid keybase1.KID, includeLowKeys bool) (ret *keybase1.UPKLiteInterface, upak *keybase1.UPKLiteAllIncarnationsInterface, key *keybase1.PublicKeyV2NaCl, err error) {
 
 	ctx = WithLogTag(ctx, "LK") // Load key
 	defer u.G().CVTraceTimed(ctx, VLog0, fmt.Sprintf("LoadKeyV2 uid:%s,kid:%s", uid, kid), func() error { return err })()
@@ -575,11 +576,15 @@ func (u *CachedUPAKLoader) LoadKey(ctx context.Context, uid keybase1.UID, kid ke
 	// It should be that a ForcePoll is good enough, but in some rare cases,
 	// people have cached values for previous pre-reset user incarnations that
 	// were incorrect. So clobber over that if it comes to it.
-	attempts := []LoadUserArg{
-		argBase.ForUPAKLite(),
-		// argBase,
-		// argBase.WithForcePoll(true),
-		// argBase.WithForceReload(),
+	var attempts []LoadUserArg
+	if includeLowKeys {
+		attempts = []LoadUserArg{
+			argBase,
+			argBase.WithForcePoll(true),
+			argBase.WithForceReload(),
+		}
+	} else {
+		attempts = []LoadUserArg{argBase.ForUPAKLite()}
 	}
 
 	for i, arg := range attempts {

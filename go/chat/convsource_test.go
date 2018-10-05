@@ -808,7 +808,7 @@ func (f failingUpak) LookupUsernameUPAKLite(ctx context.Context, uid keybase1.UI
 	require.Fail(f.t, "LookupUsernameUPAKLite call")
 	return "", nil
 }
-func (f failingUpak) LoadKey(ctx context.Context, uid keybase1.UID, kid keybase1.KID) (ret *keybase1.UPKLiteInterface,
+func (f failingUpak) LoadKey(ctx context.Context, uid keybase1.UID, kid keybase1.KID, includeLowKeys bool) (ret *keybase1.UPKLiteInterface,
 	upak *keybase1.UPKLiteAllIncarnationsInterface, key *keybase1.PublicKeyV2NaCl, err error) {
 	require.Fail(f.t, "LoadKeyV2")
 	return nil, nil, nil, nil
