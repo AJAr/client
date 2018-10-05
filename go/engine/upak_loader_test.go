@@ -58,7 +58,7 @@ func TestLoadDeviceKeyNew(t *testing.T) {
 	t.Logf("using device1:%+v", device1.ID)
 
 	t.Logf("load existing device key")
-	upk, deviceKey, revoked, err := tc.G.GetUPAKLoader().LoadDeviceKey(context.TODO(), user.GetUID(), device1.ID, false)
+	upk, deviceKey, revoked, err := tc.G.GetUPAKLoader().LoadDeviceKey(context.TODO(), user.GetUID(), device1.ID)
 	require.NoError(t, err)
 	require.Equal(t, user.GetNormalizedName().String(), upk.Base.Username, "usernames must match")
 	require.Equal(t, device1.ID, deviceKey.DeviceID, "deviceID must match")
@@ -482,7 +482,7 @@ func TestLoadAfterAcctResetCORE6943(t *testing.T) {
 	fu.LoginOrBust(tc)
 
 	// Make sure that we can load the eldest key from the previous subchain
-	_, _, _, err = tc.G.GetUPAKLoader().LoadKey(context.TODO(), fu.UID(), upak1.Base.DeviceKeys[0].KID)
+	_, _, _, err = tc.G.GetUPAKLoader().LoadKey(context.TODO(), fu.UID(), upak1.Base.DeviceKeys[0].KID, false)
 
 	if err != nil {
 		t.Fatal("Failed to load a UID/KID combo from first incarnation")
