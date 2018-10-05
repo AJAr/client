@@ -112,12 +112,12 @@ protocol UPK {
       case V2: UserPlusKeysV2AllIncarnations;
   }
 
-  enum UpkLiteMinorVersion {
+  enum UPKLiteMinorVersion {
       V0_0
   }
 
   // only latest incarnation
-  record UpkLiteV1 {
+  record UPKLiteV1 {
       UID uid;
       string username;
       Seqno eldestSeqno;
@@ -127,11 +127,11 @@ protocol UPK {
       union { null, ResetSummary } reset;
   }
 
-  record UpkLiteV1AllIncarnations {
-      UpkLiteV1 current;
-      array<UpkLiteV1> pastIncarnations;
+  record UPKLiteV1AllIncarnations {
+      UPKLiteV1 current;
+      array<UPKLiteV1> pastIncarnations;
       map<Seqno, LinkID> seqnoLinkIDs;
-      UpkLiteMinorVersion minorVersion;
+      UPKLiteMinorVersion minorVersion;
   }
 
 }

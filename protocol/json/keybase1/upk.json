@@ -354,7 +354,7 @@
     },
     {
       "type": "enum",
-      "name": "UpkLiteMinorVersion",
+      "name": "UPKLiteMinorVersion",
       "symbols": [
         "V0_0"
       ]
@@ -420,7 +420,7 @@
           "name": "seqnoLinkIDs"
         },
         {
-          "type": "UpkLiteMinorVersion",
+          "type": "UPKLiteMinorVersion",
           "name": "minorVersion"
         }
       ]
