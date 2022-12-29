@@ -237,7 +237,7 @@
     "jest": "23.6.0",
     "jest-glamor-react": "4.3.1",
     "jsc-android": "216113.0.0",
-    "json5": "2.0.1",
+    "json5": "2.2.2",
     "klaw-sync": "5.0.0",
     "minimist": "1.2.0",
     "msgpack": "git://github.com/keybase/nullModule",
